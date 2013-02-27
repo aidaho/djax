@@ -82,8 +82,3 @@ class AjaxTemplateView(TemplateView):
             else: # ajax_template_name is set
                 names = [self.ajax_template_name]
         return names
-
-
-if __name__ == "__main__":
-    import doctest
-    doctest.testmod()
