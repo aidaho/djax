@@ -12,7 +12,7 @@ or BSD 2-clause license.
 
 Here follows 'no warranty' rattle, you know the drill.
 """
-from django.views.generic.base import TemplateView
+from django.views.generic.base import TemplateResponseMixin, ContextMixin, View
 try:
     from settings import AJAX_TEMPLATE_POSTFIX
 except ImportError:
@@ -22,22 +22,29 @@ try:
 except ImportError:
      AJAX_HTTP_HEADER = "HTTP_X_PJAX" # default header for jquery-pjax
 
-
-class AjaxTemplateView(TemplateView):
+class AjaxTemplateMixin(TemplateResponseMixin):
     """
     Ajax-related template heuristic.
 
     In case of presence AJAX_HTTP_HEADER in request returns either
     self.ajax_template_name or tuple of guessed ajax template and
     template_name. Django will render the first one available so it's
-    okay to use this class instead of TemplateView even if no ajax template
-    available for this view.
+    safe to use this class even if no ajax template available for this
+    view.
     """
     ajax_template_name = None
 
+    def trigger_ajax_response(self):
+        """Override this for setting custom trigger conditions"""
+        return self.request.META.get(AJAX_HTTP_HEADER, False)
+
+    def get_ajax_template_postfix(self):
+        """Return template postfix for ajax response"""
+        return AJAX_TEMPLATE_POSTFIX
+
     def get_template_names(self):
-        names = super(AjaxTemplateView, self).get_template_names()
-        if self.request.META.get(AJAX_HTTP_HEADER, False):
+        names = super(AjaxTemplateMixin, self).get_template_names()
+        if self.trigger_ajax_response():
             if not self.ajax_template_name:
                 def guess_template(name):
                     """
@@ -53,10 +60,10 @@ class AjaxTemplateView(TemplateView):
                     """
                     if "." in name:
                         splitname = name.split('.')
-                        splitname[-2] += AJAX_TEMPLATE_POSTFIX
+                        splitname[-2] += self.get_ajax_template_postfix()
                         ajax_name = '.'.join(splitname)
                     else:
-                        ajax_name = name + AJAX_TEMPLATE_POSTFIX
+                        ajax_name = name + self.get_ajax_template_postfix()
                     return ajax_name
 
                 def roundrobin(*args):
@@ -82,3 +89,18 @@ class AjaxTemplateView(TemplateView):
             else: # ajax_template_name is set
                 names = [self.ajax_template_name]
         return names
+
+
+class AjaxSimpleTriggerMixin(object):
+    """Fires ajax reply on any ajax request."""
+    def trigger_ajax_response(self):
+        return self.request.is_ajax()
+
+     
+class AjaxTemplateView(AjaxTemplateMixin, ContextMixin, View):
+    """
+    Ajaxified Drop-in replacement for TemplateView.
+    """
+    def get(self, request, *args, **kwargs):
+        context = self.get_context_data(**kwargs)
+        return self.render_to_response(context)
